@@ -26,7 +26,7 @@ REDIS_HOST    = os.getenv("REDIS_HOST",    "localhost")
 
 TEST_DURATION = 10   # seconds per run
 WARMUP_SECS   = 2    # first N seconds excluded from latency stats
-STREAM_MAXLEN = 5_000  # max entries kept in Redis stream (prevents OOM)
+STREAM_MAXLEN = 1_000  # shared broker buffer limit: Redis stream maxlen & RabbitMQ queue max-length
 
 MSG_SIZES    = [128, 1_024, 10_240, 102_400]   # 128 B · 1 KB · 10 KB · 100 KB
 TARGET_RATES = [1_000, 5_000, 10_000]          # messages / second
@@ -108,7 +108,8 @@ def _rmq_producer(queue: str, result: RunResult, payload: str,
                                   blocked_connection_timeout=60)
     )
     ch = conn.channel()
-    ch.queue_declare(queue=queue, durable=False)
+    ch.queue_declare(queue=queue, durable=False,
+                     arguments={"x-max-length": STREAM_MAXLEN, "x-overflow": "drop-head"})
     rl  = RateLimiter(result.target_rate)
     sent = 0
 
@@ -138,7 +139,8 @@ def _rmq_consumer(queue: str, result: RunResult,
                                   blocked_connection_timeout=60)
     )
     ch = conn.channel()
-    ch.queue_declare(queue=queue, durable=False)
+    ch.queue_declare(queue=queue, durable=False,
+                     arguments={"x-max-length": STREAM_MAXLEN, "x-overflow": "drop-head"})
     ch.basic_qos(prefetch_count=50)
 
     received  = 0
