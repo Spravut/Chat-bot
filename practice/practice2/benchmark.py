@@ -24,7 +24,7 @@ import redis as redis_lib
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
 REDIS_HOST    = os.getenv("REDIS_HOST",    "localhost")
 
-TEST_DURATION = 30   # seconds per run
+TEST_DURATION = 10   # seconds per run
 WARMUP_SECS   = 2    # first N seconds excluded from latency stats
 STREAM_MAXLEN = 5_000  # max entries kept in Redis stream (prevents OOM)
 
@@ -139,7 +139,7 @@ def _rmq_consumer(queue: str, result: RunResult,
     )
     ch = conn.channel()
     ch.queue_declare(queue=queue, durable=False)
-    ch.basic_qos(prefetch_count=500)
+    ch.basic_qos(prefetch_count=50)
 
     received  = 0
     latencies: List[float] = []
@@ -159,6 +159,19 @@ def _rmq_consumer(queue: str, result: RunResult,
 
     while not stop.is_set():
         conn.process_data_events(time_limit=0.1)
+
+    # Drain: consume whatever is left in the queue.
+    # Stop as soon as no message arrives for 2 s (queue empty) or 20 s hard cap.
+    drain_hard = time.monotonic() + 20.0
+    last_count = received
+    idle_since  = time.monotonic()
+    while time.monotonic() < drain_hard:
+        conn.process_data_events(time_limit=0.2)
+        if received > last_count:
+            last_count = received
+            idle_since  = time.monotonic()
+        elif time.monotonic() - idle_since > 2.0:
+            break
 
     result.received    = received
     result.latencies_ms = latencies
@@ -217,6 +230,26 @@ def _redis_consumer(stream: str, group: str, result: RunResult,
         except Exception:
             if not stop.is_set():
                 time.sleep(0.05)
+
+    # Drain: read whatever the broker still has ready in the stream.
+    # Use a short block timeout and a wall-clock deadline so the drain
+    # can never hang indefinitely (block=0 would block forever on an empty stream).
+    drain_deadline = time.monotonic() + 3.0
+    while time.monotonic() < drain_deadline:
+        try:
+            entries = r.xreadgroup(group, "c1", {stream: ">"}, count=200, block=200)
+            if not entries or not entries[0][1]:
+                break
+            for _, msgs in entries:
+                for msg_id, fields in msgs:
+                    try:
+                        latencies.append((time.time() - float(fields["ts"])) * 1000)
+                        received += 1
+                        r.xack(stream, group, msg_id)
+                    except Exception:
+                        pass
+        except Exception:
+            break
 
     result.received    = received
     result.latencies_ms = latencies
@@ -317,7 +350,7 @@ def run_one(broker: str, msg_size: int, target_rate: int) -> RunResult:
     stop.set()
 
     producer.join(timeout=5)
-    consumer.join(timeout=5)
+    consumer.join(timeout=TEST_DURATION + 15)
     monitor.join(timeout=3)
 
     return result
