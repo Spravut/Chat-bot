@@ -1,0 +1,83 @@
+2026-04-23 17:08:09,588 [INFO] __main__: Starting bot (Redis: redis://localhost:6379/0)…
+2026-04-23 17:08:10,770 [INFO] aiogram.dispatcher: Start polling
+2026-04-23 17:08:10,859 [INFO] aiogram.dispatcher: Run polling for bot @dating_siriuss_bot id=8719338082 - 'dating_sirius'
+2026-04-23 17:08:44,601 [INFO] aiogram.event: Update id=604922736 is not handled. Duration 27 ms by bot id=8719338082
+2026-04-23 17:08:45,820 [INFO] aiogram.event: Update id=604922737 is not handled. Duration 10 ms by bot id=8719338082
+2026-04-23 17:08:49,181 [INFO] aiogram.event: Update id=604922738 is handled. Duration 991 ms by bot id=8719338082
+2026-04-23 17:09:01,323 [INFO] aiogram.event: Update id=604922739 is handled. Duration 676 ms by bot id=8719338082
+2026-04-23 17:09:20,803 [INFO] aiogram.event: Update id=604922740 is handled. Duration 193 ms by bot id=8719338082
+2026-04-23 17:09:27,054 [INFO] aiogram.event: Update id=604922741 is handled. Duration 155 ms by bot id=8719338082
+2026-04-23 17:09:41,166 [INFO] aiogram.event: Update id=604922742 is handled. Duration 190 ms by bot id=8719338082
+2026-04-23 17:09:53,431 [INFO] aiogram.event: Update id=604922743 is handled. Duration 181 ms by bot id=8719338082
+2026-04-23 17:09:56,745 [INFO] aiogram.event: Update id=604922744 is handled. Duration 284 ms by bot id=8719338082
+2026-04-23 17:10:07,068 [INFO] aiogram.event: Update id=604922745 is handled. Duration 213 ms by bot id=8719338082
+2026-04-23 17:10:10,039 [INFO] aiogram.event: Update id=604922746 is handled. Duration 187 ms by bot id=8719338082
+2026-04-23 17:10:13,210 [INFO] aiogram.event: Update id=604922747 is handled. Duration 178 ms by bot id=8719338082
+2026-04-23 17:10:15,408 [INFO] aiogram.event: Update id=604922748 is handled. Duration 761 ms by bot id=8719338082
+2026-04-23 17:10:51,741 [INFO] aiogram.event: Update id=604922749 is handled. Duration 216 ms by bot id=8719338082
+2026-04-23 17:10:54,483 [INFO] aiogram.event: Update id=604922750 is handled. Duration 316 ms by bot id=8719338082
+2026-04-23 17:11:14,746 [INFO] aiogram.event: Update id=604922751 is handled. Duration 196 ms by bot id=8719338082
+2026-04-23 17:11:16,837 [INFO] aiogram.event: Update id=604922752 is handled. Duration 344 ms by bot id=8719338082
+2026-04-23 17:11:28,084 [INFO] aiogram.event: Update id=604922753 is handled. Duration 192 ms by bot id=8719338082
+2026-04-23 17:11:29,446 [INFO] aiogram.event: Update id=604922754 is handled. Duration 258 ms by bot id=8719338082
+2026-04-23 17:12:00,428 [INFO] aiogram.event: Update id=604922755 is handled. Duration 181 ms by bot id=8719338082
+2026-04-23 17:12:04,943 [INFO] aiogram.event: Update id=604922756 is handled. Duration 139 ms by bot id=8719338082
+2026-04-23 17:12:06,584 [INFO] aiogram.event: Update id=604922757 is handled. Duration 154 ms by bot id=8719338082
+2026-04-23 17:12:10,510 [INFO] aiogram.event: Update id=604922758 is handled. Duration 132 ms by bot id=8719338082
+2026-04-23 17:12:15,326 [INFO] aiogram.event: Update id=604922759 is handled. Duration 128 ms by bot id=8719338082
+2026-04-23 17:12:19,276 [INFO] aiogram.event: Update id=604922760 is handled. Duration 292 ms by bot id=8719338082
+2026-04-23 17:12:24,796 [INFO] aiogram.event: Update id=604922761 is handled. Duration 266 ms by bot id=8719338082
+2026-04-23 17:12:29,593 [INFO] aiogram.event: Update id=604922762 is handled. Duration 201 ms by bot id=8719338082
+2026-04-23 17:12:31,862 [INFO] aiogram.event: Update id=604922763 is handled. Duration 835 ms by bot id=8719338082
+2026-04-23 17:12:34,612 [INFO] aiogram.event: Update id=604922764 is handled. Duration 200 ms by bot id=8719338082
+2026-04-23 17:12:50,005 [INFO] aiogram.event: Update id=604922765 is handled. Duration 347 ms by bot id=8719338082
+2026-04-23 17:13:31,422 [INFO] aiogram.event: Update id=604922766 is handled. Duration 269 ms by bot id=8719338082
+2026-04-23 17:13:33,919 [INFO] aiogram.event: Update id=604922767 is handled. Duration 1028 ms by bot id=8719338082
+2026-04-23 17:13:34,717 [INFO] aiogram.event: Update id=604922768 is handled. Duration 178 ms by bot id=8719338082
+2026-04-23 17:13:37,719 [INFO] aiogram.event: Update id=604922769 is handled. Duration 189 ms by bot id=8719338082
+2026-04-23 17:13:41,894 [INFO] aiogram.event: Update id=604922770 is handled. Duration 185 ms by bot id=8719338082
+2026-04-23 17:13:46,748 [INFO] aiogram.event: Update id=604922771 is handled. Duration 501 ms by bot id=8719338082
+2026-04-23 17:13:49,699 [INFO] aiogram.event: Update id=604922772 is handled. Duration 194 ms by bot id=8719338082
+2026-04-23 17:15:20,332 [INFO] aiogram.event: Update id=604922773 is handled. Duration 184 ms by bot id=8719338082
+2026-04-23 17:15:24,530 [INFO] aiogram.event: Update id=604922774 is handled. Duration 146 ms by bot id=8719338082
+2026-04-23 17:15:26,776 [INFO] aiogram.event: Update id=604922775 is handled. Duration 142 ms by bot id=8719338082
+2026-04-23 17:15:28,930 [INFO] aiogram.event: Update id=604922776 is handled. Duration 232 ms by bot id=8719338082
+2026-04-23 17:15:30,562 [INFO] aiogram.event: Update id=604922777 is handled. Duration 217 ms by bot id=8719338082
+2026-04-23 17:15:37,377 [INFO] aiogram.event: Update id=604922778 is handled. Duration 168 ms by bot id=8719338082
+2026-04-23 17:15:38,829 [INFO] aiogram.event: Update id=604922779 is handled. Duration 577 ms by bot id=8719338082
+2026-04-23 17:15:39,896 [INFO] aiogram.event: Update id=604922780 is handled. Duration 215 ms by bot id=8719338082
+2026-04-23 17:15:50,066 [INFO] aiogram.event: Update id=604922781 is handled. Duration 159 ms by bot id=8719338082
+2026-04-23 17:15:52,369 [INFO] aiogram.event: Update id=604922782 is handled. Duration 129 ms by bot id=8719338082
+2026-04-23 17:15:55,136 [INFO] aiogram.event: Update id=604922783 is handled. Duration 224 ms by bot id=8719338082
+2026-04-23 17:15:56,913 [INFO] aiogram.event: Update id=604922784 is handled. Duration 473 ms by bot id=8719338082
+2026-04-23 17:16:02,223 [INFO] aiogram.event: Update id=604922785 is handled. Duration 142 ms by bot id=8719338082
+2026-04-23 17:16:07,769 [INFO] aiogram.event: Update id=604922786 is handled. Duration 572 ms by bot id=8719338082
+2026-04-23 17:16:09,178 [INFO] aiogram.event: Update id=604922787 is handled. Duration 161 ms by bot id=8719338082
+2026-04-23 17:16:11,341 [INFO] aiogram.event: Update id=604922788 is handled. Duration 231 ms by bot id=8719338082
+2026-04-23 17:16:25,841 [INFO] aiogram.event: Update id=604922789 is handled. Duration 191 ms by bot id=8719338082
+2026-04-23 17:16:33,864 [INFO] aiogram.event: Update id=604922790 is handled. Duration 133 ms by bot id=8719338082
+2026-04-23 17:16:36,118 [INFO] aiogram.event: Update id=604922791 is handled. Duration 138 ms by bot id=8719338082
+2026-04-23 17:16:37,530 [INFO] aiogram.event: Update id=604922792 is handled. Duration 277 ms by bot id=8719338082
+2026-04-23 17:16:38,687 [INFO] aiogram.event: Update id=604922793 is handled. Duration 300 ms by bot id=8719338082
+2026-04-23 17:16:41,724 [INFO] aiogram.event: Update id=604922794 is handled. Duration 211 ms by bot id=8719338082
+2026-04-23 17:16:47,148 [INFO] aiogram.event: Update id=604922795 is handled. Duration 531 ms by bot id=8719338082
+2026-04-23 17:16:48,310 [INFO] aiogram.event: Update id=604922796 is handled. Duration 165 ms by bot id=8719338082
+2026-04-23 17:16:50,203 [INFO] aiogram.event: Update id=604922797 is handled. Duration 175 ms by bot id=8719338082
+2026-04-23 17:16:54,228 [INFO] aiogram.event: Update id=604922798 is handled. Duration 163 ms by bot id=8719338082
+2026-04-23 17:16:55,496 [INFO] aiogram.event: Update id=604922799 is handled. Duration 250 ms by bot id=8719338082
+2026-04-23 17:16:56,559 [INFO] aiogram.event: Update id=604922800 is handled. Duration 245 ms by bot id=8719338082
+2026-04-23 17:16:58,951 [INFO] aiogram.event: Update id=604922801 is handled. Duration 213 ms by bot id=8719338082
+2026-04-23 17:17:10,995 [INFO] aiogram.event: Update id=604922802 is handled. Duration 808 ms by bot id=8719338082
+2026-04-23 17:17:16,954 [INFO] aiogram.event: Update id=604922803 is handled. Duration 218 ms by bot id=8719338082
+2026-04-23 17:56:57,737 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2026-04-23 17:56:57,811 [WARNING] aiogram.dispatcher: Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8719338082)
+2026-04-23 17:56:58,891 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Сетевая папка недоступна. За информацией о разрешении проблем в сети обратитесь к справочной системе Windows]
+2026-04-23 17:56:58,904 [WARNING] aiogram.dispatcher: Sleep for 1.257846 seconds and try again... (tryings = 1, bot id = 8719338082)
+2026-04-23 17:57:00,193 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Сетевая папка недоступна. За информацией о разрешении проблем в сети обратитесь к справочной системе Windows]
+2026-04-23 17:57:00,194 [WARNING] aiogram.dispatcher: Sleep for 1.564725 seconds and try again... (tryings = 2, bot id = 8719338082)
+2026-04-23 17:57:01,776 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Сетевая папка недоступна. За информацией о разрешении проблем в сети обратитесь к справочной системе Windows]
+2026-04-23 17:57:01,776 [WARNING] aiogram.dispatcher: Sleep for 2.157320 seconds and try again... (tryings = 3, bot id = 8719338082)
+2026-04-23 17:57:04,053 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Сетевая папка недоступна. За информацией о разрешении проблем в сети обратитесь к справочной системе Windows]
+2026-04-23 17:57:04,054 [WARNING] aiogram.dispatcher: Sleep for 2.859452 seconds and try again... (tryings = 4, bot id = 8719338082)
+2026-04-23 17:57:06,929 [ERROR] aiogram.dispatcher: Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Сетевая папка недоступна. За информацией о разрешении проблем в сети обратитесь к справочной системе Windows]
+2026-04-23 17:57:06,930 [WARNING] aiogram.dispatcher: Sleep for 3.577152 seconds and try again... (tryings = 5, bot id = 8719338082)

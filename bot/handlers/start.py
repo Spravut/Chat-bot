@@ -17,7 +17,6 @@ router = Router()
 async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
 
-    # Parse optional referral code: /start ref_<telegram_id>
     ref_telegram_id: int | None = None
     text = message.text or ""
     parts = text.split(maxsplit=1)
@@ -25,7 +24,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
         try:
             ref_telegram_id = int(parts[1][4:])
             if ref_telegram_id == message.from_user.id:
-                ref_telegram_id = None  # ignore self-referral
+                ref_telegram_id = None
         except ValueError:
             pass
 
@@ -37,17 +36,24 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
     user = result.scalar_one_or_none()
 
     if user is None:
-        # New user — start registration; store referral for later
         if ref_telegram_id:
             await state.update_data(ref_telegram_id=ref_telegram_id)
+        await state.update_data(username=message.from_user.username)
         await message.answer(
             "👋 Добро пожаловать в <b>Dating Bot</b>!\n\n"
             "Давай создадим твою анкету.\n"
-            "Как тебя зовут?",
+            "Как тебя зовут?\n\n"
+            "<i>Напиши /cancel чтобы отменить регистрацию.</i>",
             parse_mode="HTML",
         )
         await state.set_state(RegistrationStates.name)
     else:
+        # Update username if changed
+        new_username = message.from_user.username
+        if user.username != new_username:
+            user.username = new_username
+            await session.commit()
+
         name = user.profile.name if user.profile else message.from_user.first_name
         await message.answer(
             f"👋 С возвращением, <b>{name}</b>!",

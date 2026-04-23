@@ -1,6 +1,7 @@
 from aiogram import Router, F
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,34 @@ router = Router()
 
 GENDER_LABELS = {"male": "Мужской", "female": "Женский"}
 SEEKING_LABELS = {"male": "Мужчину", "female": "Женщину", "any": "Не важно"}
+
+
+# ── Cancel (must be registered FIRST so it runs before text-step handlers) ─────
+
+@router.message(StateFilter(RegistrationStates), Command("cancel"))
+async def cancel_registration(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    await state.clear()
+
+    user = await session.scalar(select(User).where(User.telegram_id == message.from_user.id))
+    if user:
+        profile = await session.scalar(
+            select(UserProfile).where(UserProfile.user_id == user.id)
+        )
+        if profile:
+            await message.answer(
+                "✅ Редактирование отменено. Твоя анкета осталась без изменений.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+
+    await message.answer(
+        "❌ Регистрация отменена.\n\nНапиши /start чтобы зарегистрироваться.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
 
 
 # ── Step 1: name ───────────────────────────────────────────────────────────────
@@ -122,11 +151,25 @@ async def _save_and_finish(
 ) -> None:
     data = await state.get_data()
     ref_telegram_id: int | None = data.get("ref_telegram_id")
+    username: str | None = data.get("username")
     await state.clear()
 
-    user = User(telegram_id=telegram_id)
-    session.add(user)
-    await session.flush()  # get user.id
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    is_new = user is None
+
+    if is_new:
+        user = User(telegram_id=telegram_id, username=username)
+        session.add(user)
+        await session.flush()
+    else:
+        if username is not None:
+            user.username = username
+        existing_profile = await session.scalar(
+            select(UserProfile).where(UserProfile.user_id == user.id)
+        )
+        if existing_profile:
+            await session.delete(existing_profile)
+            await session.flush()
 
     profile = UserProfile(
         user_id=user.id,
@@ -140,11 +183,9 @@ async def _save_and_finish(
     session.add(profile)
     await session.flush()
 
-    # Initial L1 rating (profile completeness, no photos yet)
     await update_user_rating(user.id, session)
 
-    # Record referral if the inviter exists and hasn't referred this user before
-    if ref_telegram_id:
+    if is_new and ref_telegram_id:
         inviter = await session.scalar(
             select(User).where(User.telegram_id == ref_telegram_id)
         )
@@ -155,13 +196,13 @@ async def _save_and_finish(
             if not already:
                 session.add(Referral(inviter_user_id=inviter.id, referred_user_id=user.id))
                 await session.flush()
-                # Recalculate inviter's L3 rating (referral bonus changed)
                 await update_user_rating(inviter.id, session)
 
     await session.commit()
 
+    verb = "создана" if is_new else "обновлена"
     await message.answer(
-        f"🎉 Анкета создана!\n\n{_format_profile(profile)}",
+        f"🎉 Анкета {verb}!\n\n{_format_profile(profile)}",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard(),
     )

@@ -1,0 +1,3 @@
+2026-04-23 16:22:30,158 [INFO] __main__: Starting bot (Redis: redis://localhost:6379/0)…
+2026-04-23 16:22:30,537 [INFO] aiogram.dispatcher: Start polling
+2026-04-23 16:22:30,621 [INFO] aiogram.dispatcher: Run polling for bot @dating_siriuss_bot id=8719338082 - 'dating_sirius'

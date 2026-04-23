@@ -9,6 +9,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
 )
 from sqlalchemy import select
@@ -28,7 +29,7 @@ async def _get_user(session: AsyncSession, telegram_id: int) -> User | None:
 
 # ── Matches list ───────────────────────────────────────────────────────────────
 
-@router.message(F.text == "💌 Мои матчи")
+@router.message(F.text == "💌 Мои мэтчи")
 async def cmd_matches(message: Message, session: AsyncSession) -> None:
     user = await _get_user(session, message.from_user.id)
     if not user:
@@ -86,6 +87,7 @@ async def cb_view_match(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.message.answer("Анкета удалена.")
         return
 
+    other_user = await session.get(User, other_user_id)
     gender = GENDER_LABELS.get(profile.gender or "", "—")
     seeking = SEEKING_LABELS.get(profile.seeking_gender or "", "—")
 
@@ -98,19 +100,33 @@ async def cb_view_match(callback: CallbackQuery, session: AsyncSession) -> None:
     if profile.bio:
         text_lines.append(f"\n{profile.bio}")
 
+    if other_user and other_user.username:
+        text_lines.append(f"\n💬 Написать: @{other_user.username}")
+    else:
+        text_lines.append("\n⚠️ У пользователя нет юзернейма в Telegram")
+
     text = "\n".join(text_lines)
 
-    first_photo = await session.scalar(
+    photos = list(await session.scalars(
         select(Photo)
         .where(Photo.user_id == other_user_id)
         .order_by(Photo.sort_order)
-        .limit(1)
-    )
+    ))
 
-    if first_photo:
-        await callback.message.answer_photo(first_photo.photo_url, caption=text, parse_mode="HTML")
-    else:
+    if not photos:
         await callback.message.answer(text, parse_mode="HTML")
+    elif len(photos) == 1:
+        await callback.message.answer_photo(photos[0].photo_url, caption=text, parse_mode="HTML")
+    else:
+        media = [
+            InputMediaPhoto(
+                media=p.photo_url,
+                caption=text if i == 0 else None,
+                parse_mode="HTML" if i == 0 else None,
+            )
+            for i, p in enumerate(photos)
+        ]
+        await callback.message.answer_media_group(media)
 
 
 # ── Referral link ──────────────────────────────────────────────────────────────

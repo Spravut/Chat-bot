@@ -5,12 +5,12 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import InputMediaPhoto, Message, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.db.models import Rating, User, UserProfile
+from bot.db.models import Photo, Rating, User, UserProfile
 from bot.keyboards.reply import main_menu_keyboard
 from bot.states.registration import RegistrationStates
 
@@ -62,28 +62,57 @@ async def show_profile(message: Message, session: AsyncSession) -> None:
         return
 
     rating = await session.get(Rating, user.id)
-    await message.answer(
-        f"Твоя анкета:\n\n{_format_profile(user.profile, rating)}",
-        parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
-    )
+    photos = list(await session.scalars(
+        select(Photo).where(Photo.user_id == user.id).order_by(Photo.sort_order)
+    ))
+
+    profile_text = f"Твоя анкета:\n\n{_format_profile(user.profile, rating)}"
+
+    if not photos:
+        await message.answer(profile_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
+    elif len(photos) == 1:
+        await message.answer_photo(
+            photos[0].photo_url,
+            caption=profile_text,
+            parse_mode="HTML",
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        media = [
+            InputMediaPhoto(
+                media=p.photo_url,
+                caption=profile_text if i == 0 else None,
+                parse_mode="HTML" if i == 0 else None,
+            )
+            for i, p in enumerate(photos)
+        ]
+        await message.answer_media_group(media)
+        await message.answer(
+            f"☝️ Твои фото ({len(photos)} шт.)",
+            reply_markup=main_menu_keyboard(),
+        )
 
 
-# ── Edit profile (restart registration) ───────────────────────────────────────
+# ── Edit profile ───────────────────────────────────────────────────────────────
 
 @router.message(F.text == "✏️ Редактировать анкету")
 async def edit_profile(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    await state.clear()
     user = await _get_user_with_profile(session, message.from_user.id)
     if user is None:
         await message.answer("Сначала зарегистрируйся через /start.")
         return
 
-    if user.profile:
-        await session.delete(user)
-        await session.commit()
+    # Store username so _save_and_finish can update it
+    # Profile is NOT deleted here — it stays intact in case user cancels.
+    # _save_and_finish will replace it on completion.
+    await state.update_data(username=message.from_user.username)
 
     await message.answer(
-        "Давай заполним анкету заново.\n\nКак тебя зовут?",
-        reply_markup=__import__("aiogram").types.ReplyKeyboardRemove(),
+        "Давай заполним анкету заново.\n\n"
+        "Как тебя зовут?\n\n"
+        "<i>Напиши /cancel чтобы отменить и вернуться в меню.</i>",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
     )
     await state.set_state(RegistrationStates.name)
