@@ -1,11 +1,13 @@
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import User, UserProfile
+from bot.db.models import Referral, User, UserProfile
 from bot.keyboards.inline import gender_keyboard, seeking_keyboard, skip_keyboard
 from bot.keyboards.reply import main_menu_keyboard
+from bot.services.rating import update_user_rating
 from bot.states.registration import RegistrationStates
 
 router = Router()
@@ -14,7 +16,7 @@ GENDER_LABELS = {"male": "Мужской", "female": "Женский"}
 SEEKING_LABELS = {"male": "Мужчину", "female": "Женщину", "any": "Не важно"}
 
 
-# ── Шаг 1: имя ────────────────────────────────────────────────────────────────
+# ── Step 1: name ───────────────────────────────────────────────────────────────
 
 @router.message(RegistrationStates.name)
 async def process_name(message: Message, state: FSMContext) -> None:
@@ -28,7 +30,7 @@ async def process_name(message: Message, state: FSMContext) -> None:
     await state.set_state(RegistrationStates.age)
 
 
-# ── Шаг 2: возраст ────────────────────────────────────────────────────────────
+# ── Step 2: age ────────────────────────────────────────────────────────────────
 
 @router.message(RegistrationStates.age)
 async def process_age(message: Message, state: FSMContext) -> None:
@@ -45,7 +47,7 @@ async def process_age(message: Message, state: FSMContext) -> None:
     await state.set_state(RegistrationStates.gender)
 
 
-# ── Шаг 3: пол ────────────────────────────────────────────────────────────────
+# ── Step 3: gender ─────────────────────────────────────────────────────────────
 
 @router.callback_query(RegistrationStates.gender, F.data.startswith("gender:"))
 async def process_gender(callback: CallbackQuery, state: FSMContext) -> None:
@@ -59,7 +61,7 @@ async def process_gender(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(RegistrationStates.seeking_gender)
 
 
-# ── Шаг 4: кого ищет ──────────────────────────────────────────────────────────
+# ── Step 4: seeking gender ─────────────────────────────────────────────────────
 
 @router.callback_query(RegistrationStates.seeking_gender, F.data.startswith("seeking:"))
 async def process_seeking(callback: CallbackQuery, state: FSMContext) -> None:
@@ -72,7 +74,7 @@ async def process_seeking(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(RegistrationStates.city)
 
 
-# ── Шаг 5: город ──────────────────────────────────────────────────────────────
+# ── Step 5: city ───────────────────────────────────────────────────────────────
 
 @router.message(RegistrationStates.city)
 async def process_city(message: Message, state: FSMContext) -> None:
@@ -89,7 +91,7 @@ async def process_city(message: Message, state: FSMContext) -> None:
     await state.set_state(RegistrationStates.bio)
 
 
-# ── Шаг 6: bio (текст) ────────────────────────────────────────────────────────
+# ── Step 6: bio (text) ─────────────────────────────────────────────────────────
 
 @router.message(RegistrationStates.bio)
 async def process_bio(message: Message, state: FSMContext, session: AsyncSession) -> None:
@@ -100,7 +102,7 @@ async def process_bio(message: Message, state: FSMContext, session: AsyncSession
     await _save_and_finish(message, state, session, bio, message.from_user.id)
 
 
-# ── Шаг 6: bio (пропуск) ──────────────────────────────────────────────────────
+# ── Step 6: bio (skip) ─────────────────────────────────────────────────────────
 
 @router.callback_query(RegistrationStates.bio, F.data == "skip")
 async def skip_bio(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -109,7 +111,7 @@ async def skip_bio(callback: CallbackQuery, state: FSMContext, session: AsyncSes
     await _save_and_finish(callback.message, state, session, None, callback.from_user.id)
 
 
-# ── Сохранение в БД ───────────────────────────────────────────────────────────
+# ── Save to DB ─────────────────────────────────────────────────────────────────
 
 async def _save_and_finish(
     message: Message,
@@ -119,11 +121,12 @@ async def _save_and_finish(
     telegram_id: int,
 ) -> None:
     data = await state.get_data()
+    ref_telegram_id: int | None = data.get("ref_telegram_id")
     await state.clear()
 
     user = User(telegram_id=telegram_id)
     session.add(user)
-    await session.flush()  # получаем user.id
+    await session.flush()  # get user.id
 
     profile = UserProfile(
         user_id=user.id,
@@ -135,6 +138,26 @@ async def _save_and_finish(
         bio=bio,
     )
     session.add(profile)
+    await session.flush()
+
+    # Initial L1 rating (profile completeness, no photos yet)
+    await update_user_rating(user.id, session)
+
+    # Record referral if the inviter exists and hasn't referred this user before
+    if ref_telegram_id:
+        inviter = await session.scalar(
+            select(User).where(User.telegram_id == ref_telegram_id)
+        )
+        if inviter and inviter.id != user.id:
+            already = await session.scalar(
+                select(Referral).where(Referral.referred_user_id == user.id)
+            )
+            if not already:
+                session.add(Referral(inviter_user_id=inviter.id, referred_user_id=user.id))
+                await session.flush()
+                # Recalculate inviter's L3 rating (referral bonus changed)
+                await update_user_rating(inviter.id, session)
+
     await session.commit()
 
     await message.answer(

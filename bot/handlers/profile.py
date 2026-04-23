@@ -1,11 +1,16 @@
-from aiogram import Router, F
+"""
+Profile view, edit, and rating display.
+"""
+from __future__ import annotations
+
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.db.models import User, UserProfile
+from bot.db.models import Rating, User, UserProfile
 from bot.keyboards.reply import main_menu_keyboard
 from bot.states.registration import RegistrationStates
 
@@ -15,7 +20,7 @@ GENDER_LABELS = {"male": "Мужской", "female": "Женский"}
 SEEKING_LABELS = {"male": "Мужчину", "female": "Женщину", "any": "Не важно"}
 
 
-def _format_profile(profile: UserProfile) -> str:
+def _format_profile(profile: UserProfile, rating: Rating | None = None) -> str:
     gender = GENDER_LABELS.get(profile.gender or "", "—")
     seeking = SEEKING_LABELS.get(profile.seeking_gender or "", "—")
     lines = [
@@ -27,6 +32,14 @@ def _format_profile(profile: UserProfile) -> str:
     ]
     if profile.bio:
         lines.append(f"📝 <b>О себе:</b> {profile.bio}")
+    if profile.age_min or profile.age_max:
+        age_range = f"{profile.age_min or '?'} – {profile.age_max or '?'}"
+        lines.append(f"🔢 <b>Возраст партнёра:</b> {age_range}")
+    if rating is not None:
+        lines.append(
+            f"\n⭐ <b>Рейтинг:</b> {float(rating.level3_score):.2f} "
+            f"(анкета: {float(rating.level1_score):.1f} · активность: {float(rating.level2_score):.1f})"
+        )
     return "\n".join(lines)
 
 
@@ -39,36 +52,32 @@ async def _get_user_with_profile(session: AsyncSession, telegram_id: int) -> Use
     return result.scalar_one_or_none()
 
 
-# ── Показать анкету ────────────────────────────────────────────────────────────
+# ── Show profile ───────────────────────────────────────────────────────────────
 
 @router.message(F.text == "👤 Моя анкета")
 async def show_profile(message: Message, session: AsyncSession) -> None:
     user = await _get_user_with_profile(session, message.from_user.id)
-
     if user is None or user.profile is None:
-        await message.answer(
-            "Анкета не найдена. Используй /start чтобы зарегистрироваться."
-        )
+        await message.answer("Анкета не найдена. Используй /start чтобы зарегистрироваться.")
         return
 
+    rating = await session.get(Rating, user.id)
     await message.answer(
-        f"Твоя анкета:\n\n{_format_profile(user.profile)}",
+        f"Твоя анкета:\n\n{_format_profile(user.profile, rating)}",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard(),
     )
 
 
-# ── Редактировать анкету ───────────────────────────────────────────────────────
+# ── Edit profile (restart registration) ───────────────────────────────────────
 
 @router.message(F.text == "✏️ Редактировать анкету")
 async def edit_profile(message: Message, session: AsyncSession, state: FSMContext) -> None:
     user = await _get_user_with_profile(session, message.from_user.id)
-
     if user is None:
         await message.answer("Сначала зарегистрируйся через /start.")
         return
 
-    # Удаляем старый профиль и запускаем регистрацию заново
     if user.profile:
         await session.delete(user)
         await session.commit()

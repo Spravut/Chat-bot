@@ -17,6 +17,18 @@ router = Router()
 async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
 
+    # Parse optional referral code: /start ref_<telegram_id>
+    ref_telegram_id: int | None = None
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) == 2 and parts[1].startswith("ref_"):
+        try:
+            ref_telegram_id = int(parts[1][4:])
+            if ref_telegram_id == message.from_user.id:
+                ref_telegram_id = None  # ignore self-referral
+        except ValueError:
+            pass
+
     result = await session.execute(
         select(User)
         .where(User.telegram_id == message.from_user.id)
@@ -25,6 +37,9 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
     user = result.scalar_one_or_none()
 
     if user is None:
+        # New user — start registration; store referral for later
+        if ref_telegram_id:
+            await state.update_data(ref_telegram_id=ref_telegram_id)
         await message.answer(
             "👋 Добро пожаловать в <b>Dating Bot</b>!\n\n"
             "Давай создадим твою анкету.\n"

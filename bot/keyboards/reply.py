@@ -6,8 +6,9 @@ remove_keyboard = ReplyKeyboardRemove()
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="👤 Моя анкета")],
-            [KeyboardButton(text="✏️ Редактировать анкету")],
+            [KeyboardButton(text="🔍 Смотреть анкеты"), KeyboardButton(text="💌 Мои матчи")],
+            [KeyboardButton(text="👤 Моя анкета"),      KeyboardButton(text="📸 Мои фото")],
+            [KeyboardButton(text="✏️ Редактировать анкету"), KeyboardButton(text="🔗 Пригласить друга")],
         ],
         resize_keyboard=True,
     )
