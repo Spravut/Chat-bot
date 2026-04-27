@@ -12,3 +12,4 @@ venv/
 env/
 *.sqlite3
 *.db
+CLAUDE.md

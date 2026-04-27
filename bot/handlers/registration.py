@@ -123,21 +123,61 @@ async def process_city(message: Message, state: FSMContext) -> None:
 # ── Step 6: bio (text) ─────────────────────────────────────────────────────────
 
 @router.message(RegistrationStates.bio)
-async def process_bio(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def process_bio(message: Message, state: FSMContext) -> None:
     bio = message.text.strip() if message.text else None
     if bio and len(bio) > 500:
         await message.answer("Слишком длинно. Напиши не более 500 символов.")
         return
-    await _save_and_finish(message, state, session, bio, message.from_user.id)
+    await state.update_data(bio=bio)
+    await message.answer("С какого возраста ищешь партнёра? (например: 18)")
+    await state.set_state(RegistrationStates.age_min)
 
 
 # ── Step 6: bio (skip) ─────────────────────────────────────────────────────────
 
 @router.callback_query(RegistrationStates.bio, F.data == "skip")
-async def skip_bio(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+async def skip_bio(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await callback.message.edit_text("О себе: пропущено ✓")
-    await _save_and_finish(callback.message, state, session, None, callback.from_user.id)
+    await state.update_data(bio=None)
+    await callback.message.answer("С какого возраста ищешь партнёра? (например: 18)")
+    await state.set_state(RegistrationStates.age_min)
+
+
+# ── Step 7: age_min ────────────────────────────────────────────────────────────
+
+@router.message(RegistrationStates.age_min)
+async def process_age_min(message: Message, state: FSMContext) -> None:
+    try:
+        age_min = int(message.text.strip())
+        if not (16 <= age_min <= 100):
+            raise ValueError
+    except (ValueError, AttributeError):
+        await message.answer("Укажи возраст числом (от 16 до 100).")
+        return
+
+    await state.update_data(age_min=age_min)
+    await message.answer("До какого возраста? (например: 30)")
+    await state.set_state(RegistrationStates.age_max)
+
+
+# ── Step 8: age_max ────────────────────────────────────────────────────────────
+
+@router.message(RegistrationStates.age_max)
+async def process_age_max(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    data = await state.get_data()
+    age_min = data.get("age_min", 16)
+    try:
+        age_max = int(message.text.strip())
+        if not (age_min <= age_max <= 100):
+            raise ValueError
+    except (ValueError, AttributeError):
+        await message.answer(f"Укажи возраст числом (от {age_min} до 100).")
+        return
+
+    await state.update_data(age_max=age_max)
+    bio = data.get("bio")
+    await _save_and_finish(message, state, session, bio, message.from_user.id)
 
 
 # ── Save to DB ─────────────────────────────────────────────────────────────────
@@ -152,6 +192,8 @@ async def _save_and_finish(
     data = await state.get_data()
     ref_telegram_id: int | None = data.get("ref_telegram_id")
     username: str | None = data.get("username")
+    age_min: int | None = data.get("age_min")
+    age_max: int | None = data.get("age_max")
     await state.clear()
 
     user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
@@ -179,6 +221,8 @@ async def _save_and_finish(
         seeking_gender=data["seeking_gender"],
         city=data["city"],
         bio=bio,
+        age_min=age_min,
+        age_max=age_max,
     )
     session.add(profile)
     await session.flush()
@@ -220,4 +264,6 @@ def _format_profile(profile: UserProfile) -> str:
     ]
     if profile.bio:
         lines.append(f"📝 <b>О себе:</b> {profile.bio}")
+    if profile.age_min and profile.age_max:
+        lines.append(f"🔞 <b>Возраст партнёра:</b> {profile.age_min}–{profile.age_max}")
     return "\n".join(lines)

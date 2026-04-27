@@ -8,3 +8,5 @@ class RegistrationStates(StatesGroup):
     seeking_gender = State()
     city = State()
     bio = State()
+    age_min = State()
+    age_max = State()
