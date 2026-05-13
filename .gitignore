@@ -13,3 +13,7 @@ env/
 *.sqlite3
 *.db
 CLAUDE.md
+
+# JMeter run artifacts
+loadtest/results.jtl
+loadtest/report/

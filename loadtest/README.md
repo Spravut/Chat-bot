@@ -28,8 +28,18 @@ Open `loadtest/report/index.html` for percentile graphs.
 
 | Scenario | Threads | Ramp-up | Duration | Purpose                      |
 |----------|---------|---------|----------|------------------------------|
-| Steady   | 50      | 10s     | 60s      | Sustained load — p95 latency |
-| Spike    | 200     | 5s      | 30s      | Burst handling — error rate  |
+| Steady   | 10      | 5s      | 60s      | Sustained load — p95 latency |
+| Spike    | 30      | 3s      | 30s      | Burst handling — error rate  |
+
+> **About these numbers**: `prometheus_client.start_http_server` uses Python's
+> single-threaded `wsgiref.simple_server.WSGIServer`. It's designed to be
+> scraped by Prometheus once every 15s, not to handle hundreds of concurrent
+> clients. With ≥50 concurrent threads firing as fast as possible, the TCP
+> accept backlog overflows and connections get rejected (Avg ≈ 0ms, 100%
+> errors). The values above are tuned to exercise the endpoint meaningfully
+> without exhausting the bundled WSGIServer — if you need higher concurrency,
+> swap the metrics server for `aiohttp` or `uvicorn` with the prometheus
+> ASGI app.
 
 ## What to look at
 
