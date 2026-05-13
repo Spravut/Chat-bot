@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from bot.db.models import Photo, Rating, User, UserProfile
 from bot.keyboards.reply import main_menu_keyboard
+from bot.services.storage import display_ref
 from bot.states.registration import RegistrationStates
 
 router = Router()
@@ -72,7 +73,7 @@ async def show_profile(message: Message, session: AsyncSession) -> None:
         await message.answer(profile_text, parse_mode="HTML", reply_markup=main_menu_keyboard())
     elif len(photos) == 1:
         await message.answer_photo(
-            photos[0].photo_url,
+            display_ref(photos[0]),
             caption=profile_text,
             parse_mode="HTML",
             reply_markup=main_menu_keyboard(),
@@ -80,7 +81,7 @@ async def show_profile(message: Message, session: AsyncSession) -> None:
     else:
         media = [
             InputMediaPhoto(
-                media=p.photo_url,
+                media=display_ref(p),
                 caption=profile_text if i == 0 else None,
                 parse_mode="HTML" if i == 0 else None,
             )

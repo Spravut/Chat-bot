@@ -75,7 +75,11 @@ class Photo(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    # MinIO object key for the persistent copy (source of truth).
+    # Legacy rows may still hold a raw Telegram file_id here.
     photo_url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Telegram file_id — kept alongside so re-sends stay instant.
+    telegram_file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

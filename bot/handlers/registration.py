@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import Referral, User, UserProfile
 from bot.keyboards.inline import gender_keyboard, seeking_keyboard, skip_keyboard
 from bot.keyboards.reply import main_menu_keyboard
+from bot.services.events import publish_interaction, publish_rating_recalc
+from bot.services.metrics import REFERRALS_TOTAL, USERS_REGISTERED
 from bot.services.rating import update_user_rating
 from bot.states.registration import RegistrationStates
 
@@ -229,6 +231,7 @@ async def _save_and_finish(
 
     await update_user_rating(user.id, session)
 
+    inviter_id_to_recalc: int | None = None
     if is_new and ref_telegram_id:
         inviter = await session.scalar(
             select(User).where(User.telegram_id == ref_telegram_id)
@@ -240,9 +243,18 @@ async def _save_and_finish(
             if not already:
                 session.add(Referral(inviter_user_id=inviter.id, referred_user_id=user.id))
                 await session.flush()
-                await update_user_rating(inviter.id, session)
+                inviter_id_to_recalc = inviter.id
+                REFERRALS_TOTAL.inc()
 
     await session.commit()
+
+    if is_new:
+        USERS_REGISTERED.inc()
+    # Inviter isn't waiting in the chat — offload their rating recalc to Celery.
+    if inviter_id_to_recalc:
+        publish_interaction("referral", actor_id=inviter_id_to_recalc)
+        # Also schedule explicit recalc as a belt-and-suspenders measure.
+        publish_rating_recalc(inviter_id_to_recalc)
 
     verb = "создана" if is_new else "обновлена"
     await message.answer(

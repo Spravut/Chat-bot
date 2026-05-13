@@ -1,13 +1,18 @@
 """
 Photo management handler.
 
-Users can upload up to 5 photos. Each photo is stored as a Telegram file_id.
+Users can upload up to 5 photos. Each photo is persisted to MinIO (object key
+stored in `Photo.photo_url`) and also kept as a Telegram file_id (in
+`telegram_file_id`) for fast in-bot rendering.
+
 Management: view all photos, add, delete specific photo, reorder with ⬆️/⬇️ buttons.
 
 After every change the photo preview is automatically refreshed in-place:
   old preview messages + old management message are deleted, fresh ones sent.
 """
 from __future__ import annotations
+
+import logging
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -24,8 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import Photo, User
 from bot.keyboards.reply import main_menu_keyboard
 from bot.services.rating import update_user_rating
+from bot.services.storage import display_ref as _display_ref
+from bot.services.storage import get_storage, is_minio_key
 from bot.states.photos import PhotoStates
 
+logger = logging.getLogger(__name__)
 router = Router()
 MAX_PHOTOS = 5
 
@@ -106,11 +114,11 @@ async def _refresh_photo_view(
     new_preview_ids: list[int] = []
     if photos:
         if count == 1:
-            sent = await bot.send_photo(chat_id, photos[0].photo_url, caption="Фото 1")
+            sent = await bot.send_photo(chat_id, _display_ref(photos[0]), caption="Фото 1")
             new_preview_ids = [sent.message_id]
         else:
             media = [
-                InputMediaPhoto(media=p.photo_url, caption=f"Фото {i + 1}")
+                InputMediaPhoto(media=_display_ref(p), caption=f"Фото {i + 1}")
                 for i, p in enumerate(photos)
             ]
             sent_msgs = await bot.send_media_group(chat_id, media)
@@ -144,11 +152,11 @@ async def cmd_photos(message: Message, session: AsyncSession, state: FSMContext)
     preview_ids: list[int] = []
     if photos:
         if count == 1:
-            sent = await message.answer_photo(photos[0].photo_url, caption="Фото 1")
+            sent = await message.answer_photo(_display_ref(photos[0]), caption="Фото 1")
             preview_ids = [sent.message_id]
         else:
             media = [
-                InputMediaPhoto(media=p.photo_url, caption=f"Фото {i + 1}")
+                InputMediaPhoto(media=_display_ref(p), caption=f"Фото {i + 1}")
                 for i, p in enumerate(photos)
             ]
             sent_msgs = await message.answer_media_group(media)
@@ -206,7 +214,25 @@ async def handle_photo(message: Message, session: AsyncSession, state: FSMContex
         return
 
     file_id = message.photo[-1].file_id
-    session.add(Photo(user_id=user_db_id, photo_url=file_id, sort_order=len(photos) + 1))
+
+    # Download from Telegram → upload to MinIO. If MinIO is unreachable we
+    # still save the file_id so the user isn't blocked; a separate backfill
+    # task can re-upload missing keys later.
+    minio_key: str | None = None
+    try:
+        tg_file = await message.bot.get_file(file_id)
+        buffer = await message.bot.download_file(tg_file.file_path)
+        data_bytes = buffer.read() if hasattr(buffer, "read") else buffer
+        minio_key = get_storage().upload(user_db_id, data_bytes)
+    except Exception as exc:
+        logger.warning("MinIO upload failed for user %s: %s", user_db_id, exc)
+
+    session.add(Photo(
+        user_id=user_db_id,
+        photo_url=minio_key or file_id,
+        telegram_file_id=file_id,
+        sort_order=len(photos) + 1,
+    ))
     await update_user_rating(user_db_id, session)
     await session.commit()
 
@@ -269,6 +295,13 @@ async def cb_delete_photo(
         await callback.answer("Фото не найдено.")
         return
 
+    # Remove the persistent copy from MinIO before dropping the DB row.
+    if is_minio_key(photo.photo_url):
+        try:
+            get_storage().delete(photo.photo_url)
+        except Exception as exc:
+            logger.warning("MinIO delete failed for %s: %s", photo.photo_url, exc)
+
     await session.delete(photo)
     await session.flush()
     await _renumber(session, user.id)
@@ -300,7 +333,12 @@ async def cb_photo_up(
         await callback.answer()
         return
 
-    photo = await session.get(Photo, photo_id)
+    # Lock both photo rows we're swapping in canonical (id-ordered) order to
+    # serialize concurrent reorders for the same user. Canonical order prevents
+    # deadlocks if two reorders touch overlapping pairs.
+    photo = await session.scalar(
+        select(Photo).where(Photo.id == photo_id).with_for_update()
+    )
     if not photo or photo.user_id != user.id or photo.sort_order <= 1:
         await callback.answer()
         return
@@ -309,11 +347,11 @@ async def cb_photo_up(
         select(Photo).where(
             Photo.user_id == user.id,
             Photo.sort_order == photo.sort_order - 1,
-        )
+        ).with_for_update()
     )
     if prev:
         old_a, old_b = photo.sort_order, prev.sort_order
-        photo.sort_order = 100  # temp value outside 1-5 range
+        photo.sort_order = 100  # temp value outside 1-5 range, FK locks hold
         await session.flush()
         prev.sort_order = old_a
         await session.flush()
@@ -345,7 +383,10 @@ async def cb_photo_down(
         await callback.answer()
         return
 
-    photo = await session.get(Photo, photo_id)
+    # See cb_photo_up for the rationale on FOR UPDATE + canonical ordering.
+    photo = await session.scalar(
+        select(Photo).where(Photo.id == photo_id).with_for_update()
+    )
     if not photo or photo.user_id != user.id:
         await callback.answer()
         return
@@ -354,11 +395,11 @@ async def cb_photo_down(
         select(Photo).where(
             Photo.user_id == user.id,
             Photo.sort_order == photo.sort_order + 1,
-        )
+        ).with_for_update()
     )
     if next_photo:
         old_a, old_b = photo.sort_order, next_photo.sort_order
-        photo.sort_order = 100  # temp value outside 1-5 range
+        photo.sort_order = 100  # temp value outside 1-5 range, FK locks hold
         await session.flush()
         next_photo.sort_order = old_a
         await session.flush()

@@ -1,23 +1,26 @@
 import asyncio
-import logging
 
+import structlog
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
-from bot.config import BOT_TOKEN, REDIS_URL
-from bot.middlewares.db import DatabaseMiddleware
+from bot.config import BOT_TOKEN, METRICS_ENABLED, METRICS_PORT, REDIS_URL
 from bot.handlers import browse, matches, photos, profile, registration, start
+from bot.logging_config import configure_logging
+from bot.middlewares.db import DatabaseMiddleware
+from bot.middlewares.metrics import MetricsMiddleware
+from bot.services.metrics import start_metrics_server
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = structlog.get_logger(__name__)
 
 
 async def main() -> None:
-    # Redis is used for two purposes:
+    if METRICS_ENABLED:
+        start_metrics_server(METRICS_PORT)
+
+    # Redis is used for:
     #   1. FSM state storage (RedisStorage) — fast distributed state management
     #   2. Feed pre-ranking cache (dp["redis"]) — avoids repeated DB queries
     redis = Redis.from_url(REDIS_URL, decode_responses=True)
@@ -29,6 +32,9 @@ async def main() -> None:
     # Inject Redis instance into all handlers via keyword argument `redis`
     dp["redis"] = redis
 
+    # Middlewares — metrics first (so it wraps the handler) then DB.
+    dp.message.middleware(MetricsMiddleware())
+    dp.callback_query.middleware(MetricsMiddleware())
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 
@@ -39,13 +45,13 @@ async def main() -> None:
     dp.include_router(photos.router)
     dp.include_router(matches.router)
 
-    logger.info("Starting bot (Redis: %s)…", REDIS_URL)
+    logger.info("bot starting", redis_url=REDIS_URL, metrics_port=METRICS_PORT)
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
         await redis.aclose()
-        logger.info("Bot stopped.")
+        logger.info("bot stopped")
 
 
 if __name__ == "__main__":

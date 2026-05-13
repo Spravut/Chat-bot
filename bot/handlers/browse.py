@@ -30,8 +30,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Like, Match, Photo, RatingEvent, User, UserProfile
+from bot.db.session import AsyncSessionFactory
 from bot.services.cache import needs_refill, pop_next, push_profiles
+from bot.services.events import publish_interaction
+from bot.services.isolation import run_serializable
+from bot.services.metrics import LIKES_TOTAL, MATCHES_TOTAL, SKIPS_TOTAL
 from bot.services.rating import get_ranked_candidates, update_user_rating
+from bot.services.storage import display_ref
 from bot.states.browse import BrowseStates
 
 logger = logging.getLogger(__name__)
@@ -145,7 +150,7 @@ async def _show_next(
 
     if photos:
         await bot.send_photo(
-            chat_id, photos[0].photo_url,
+            chat_id, display_ref(photos[0]),
             caption=text, reply_markup=keyboard, parse_mode="HTML",
         )
     else:
@@ -425,26 +430,30 @@ async def cb_show_photos(callback: CallbackQuery, session: AsyncSession) -> None
         return
 
     if len(photos) == 1:
-        await callback.bot.send_photo(callback.message.chat.id, photos[0].photo_url)
+        await callback.bot.send_photo(callback.message.chat.id, display_ref(photos[0]))
         return
 
-    media = [InputMediaPhoto(media=p.photo_url) for p in photos]
+    media = [InputMediaPhoto(media=display_ref(p)) for p in photos]
     await callback.bot.send_media_group(callback.message.chat.id, media)
 
 
 # ── Like logic ─────────────────────────────────────────────────────────────────
 
-async def _do_like(
-    from_id: int,
-    to_id: int,
-    session: AsyncSession,
-    bot: Bot,
-    user_message: str | None = None,
-) -> None:
-    if await session.scalar(
+async def _persist_like_and_match(
+    session: AsyncSession, from_id: int, to_id: int,
+) -> tuple[bool, bool]:
+    """Critical section — runs under SERIALIZABLE.
+
+    Returns `(inserted_new_like, created_match)`. The whole insert-mutual-check-
+    create-match sequence is one transaction; under SERIALIZABLE Postgres
+    detects the concurrent-mutual-like write-skew and aborts one transaction
+    with SQLSTATE 40001, which `run_serializable` retries.
+    """
+    duplicate = await session.scalar(
         select(Like).where(Like.from_user_id == from_id, Like.to_user_id == to_id)
-    ):
-        return
+    )
+    if duplicate:
+        return False, False
 
     session.add(Like(from_user_id=from_id, to_user_id=to_id))
     session.add(RatingEvent(user_id=to_id, event_type="like_received", target_user_id=from_id))
@@ -453,20 +462,54 @@ async def _do_like(
     mutual = await session.scalar(
         select(Like).where(Like.from_user_id == to_id, Like.to_user_id == from_id)
     )
-    if mutual:
-        a_id, b_id = min(from_id, to_id), max(from_id, to_id)
-        if not await session.scalar(
-            select(Match).where(Match.user_a_id == a_id, Match.user_b_id == b_id)
-        ):
-            session.add(Match(user_a_id=a_id, user_b_id=b_id))
-            await session.flush()
-            await _notify_match(from_id, to_id, session, bot)
-        await update_user_rating(from_id, session)
+    if not mutual:
+        return True, False
+
+    a_id, b_id = min(from_id, to_id), max(from_id, to_id)
+    existing_match = await session.scalar(
+        select(Match).where(Match.user_a_id == a_id, Match.user_b_id == b_id)
+    )
+    if existing_match:
+        return True, False
+
+    session.add(Match(user_a_id=a_id, user_b_id=b_id))
+    await session.flush()
+    return True, True
+
+
+async def _do_like(
+    from_id: int,
+    to_id: int,
+    session: AsyncSession,
+    bot: Bot,
+    user_message: str | None = None,
+) -> None:
+    # Critical section under SERIALIZABLE (see bot/services/isolation.py for
+    # the write-skew anomaly this prevents). Notifications and event publish
+    # happen AFTER commit on the regular READ COMMITTED session — they don't
+    # affect the invariant and don't need to be in the serialized window.
+    inserted, is_match = await run_serializable(
+        AsyncSessionFactory,
+        lambda s: _persist_like_and_match(s, from_id, to_id),
+    )
+    if not inserted:
+        return
+
+    LIKES_TOTAL.inc()
+    if is_match:
+        MATCHES_TOTAL.inc()
+        await _notify_match(from_id, to_id, session, bot)
     else:
         await _notify_like_received(from_id, to_id, session, bot, user_message)
 
-    await update_user_rating(to_id, session)
-    await session.commit()
+    # Rating recalculation for the target (and on match — also for actor) is
+    # delegated to Celery: the chatting user doesn't need it synchronously,
+    # and offloading it keeps Telegram response time low. If RabbitMQ is down,
+    # Celery Beat catches up hourly via `recalculate_all_ratings`.
+    publish_interaction(
+        "match" if is_match else "like",
+        actor_id=from_id, target_id=to_id,
+    )
 
 
 # ── Skip logic ─────────────────────────────────────────────────────────────────
@@ -476,8 +519,10 @@ async def _do_skip(from_id: int, to_id: int, session: AsyncSession) -> None:
         RatingEvent(user_id=from_id, event_type="skipped",       target_user_id=to_id),
         RatingEvent(user_id=to_id,   event_type="skip_received", target_user_id=from_id),
     ])
-    await update_user_rating(to_id, session)
     await session.commit()
+    SKIPS_TOTAL.inc()
+    # Rating recalc for target is delegated to Celery (see _do_like).
+    publish_interaction("skip", actor_id=from_id, target_id=to_id)
 
 
 # ── Notify target that someone liked them ──────────────────────────────────────
@@ -513,7 +558,7 @@ async def _notify_like_received(
         if first_photo:
             await bot.send_photo(
                 to_user.telegram_id,
-                first_photo.photo_url,
+                display_ref(first_photo),
                 caption=text,
                 reply_markup=keyboard,
                 parse_mode="HTML",

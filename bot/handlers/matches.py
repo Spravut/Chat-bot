@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Match, Photo, User, UserProfile
+from bot.services.storage import display_ref
 
 router = Router()
 
@@ -116,11 +117,11 @@ async def cb_view_match(callback: CallbackQuery, session: AsyncSession) -> None:
     if not photos:
         await callback.message.answer(text, parse_mode="HTML")
     elif len(photos) == 1:
-        await callback.message.answer_photo(photos[0].photo_url, caption=text, parse_mode="HTML")
+        await callback.message.answer_photo(display_ref(photos[0]), caption=text, parse_mode="HTML")
     else:
         media = [
             InputMediaPhoto(
-                media=p.photo_url,
+                media=display_ref(p),
                 caption=text if i == 0 else None,
                 parse_mode="HTML" if i == 0 else None,
             )

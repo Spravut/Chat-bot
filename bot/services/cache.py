@@ -12,6 +12,12 @@ from __future__ import annotations
 
 from redis.asyncio import Redis
 
+from bot.services.metrics import (
+    FEED_CANDIDATES_FETCHED,
+    FEED_QUEUE_LENGTH,
+    FEED_REFILLS,
+)
+
 _FEED_KEY = "feed:{user_id}"
 _FEED_TTL = 1800          # 30 minutes
 REFILL_THRESHOLD = 2      # refill when fewer than this many profiles remain
@@ -31,11 +37,14 @@ async def push_profiles(redis: Redis, user_id: int, profile_ids: list[int]) -> N
     key = _FEED_KEY.format(user_id=user_id)
     await redis.rpush(key, *[str(pid) for pid in profile_ids])
     await redis.expire(key, _FEED_TTL)
+    FEED_REFILLS.inc()
+    FEED_CANDIDATES_FETCHED.inc(len(profile_ids))
 
 
 async def pop_next(redis: Redis, user_id: int) -> int | None:
     key = _FEED_KEY.format(user_id=user_id)
     value = await redis.lpop(key)
+    FEED_QUEUE_LENGTH.set(await redis.llen(key))
     return int(value) if value is not None else None
 
 

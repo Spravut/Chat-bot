@@ -7,6 +7,7 @@ Level 3 (combined):   weighted mix of L1+L2 + referral bonus
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import (
     Like, Match, Photo, Rating, RatingEvent, Referral, User, UserProfile,
 )
+from bot.services.metrics import RANKING_QUERY_DURATION
 
 
 # ── Level 1: profile completeness ─────────────────────────────────────────────
@@ -131,10 +133,12 @@ async def get_ranked_candidates(
     limit: int = 10,
 ) -> list[int]:
     """Return up to `limit` candidate user IDs ranked by combined rating."""
+    start = time.perf_counter()
     viewer_profile = await session.scalar(
         select(UserProfile).where(UserProfile.user_id == viewer_id)
     )
     if not viewer_profile:
+        RANKING_QUERY_DURATION.observe(time.perf_counter() - start)
         return []
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -186,4 +190,6 @@ async def get_ranked_candidates(
         )
 
     result = await session.execute(stmt)
-    return [row[0] for row in result.all()]
+    rows = [row[0] for row in result.all()]
+    RANKING_QUERY_DURATION.observe(time.perf_counter() - start)
+    return rows
