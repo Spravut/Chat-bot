@@ -171,7 +171,7 @@ async def get_ranked_candidates(
             UserProfile.user_id.not_in(blocked_outgoing),
             UserProfile.user_id.not_in(blocked_incoming),
             UserProfile.name.isnot(None),
-            User.is_banned.is_(False),
+            User.is_banned == False,  # noqa: E712 — SQLite-friendly equality
         )
         .order_by(Rating.level3_score.desc().nullslast())
         .limit(limit)

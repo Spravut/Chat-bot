@@ -106,8 +106,9 @@ async def users_list(
 
     rows = (await session.execute(stmt)).all()
     return templates.TemplateResponse(
+        request,
         "users.html",
-        {"request": request, "rows": rows, "q": q, "show_banned": show_banned},
+        {"rows": rows, "q": q, "show_banned": show_banned},
     )
 
 
@@ -169,9 +170,10 @@ async def reports_list(
         select(func.count()).select_from(Report).where(Report.status == "pending")
     )
     return templates.TemplateResponse(
+        request,
         "reports.html",
         {
-            "request": request, "rows": rows,
+            "rows": rows,
             "status_filter": status_filter,
             "pending_count": pending_count,
         },
@@ -260,9 +262,9 @@ async def stats(
         return [{"date": r[0].strftime("%Y-%m-%d"), "value": int(r[1])} for r in rows]
 
     return templates.TemplateResponse(
+        request,
         "stats.html",
         {
-            "request": request,
             "headline": headline,
             "days": days,
             "registrations": _ser(registrations),

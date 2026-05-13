@@ -10,6 +10,7 @@ from bot.handlers import browse, matches, photos, profile, registration, start
 from bot.logging_config import configure_logging
 from bot.middlewares.db import DatabaseMiddleware
 from bot.middlewares.metrics import MetricsMiddleware
+from bot.middlewares.ratelimit import RateLimitMiddleware
 from bot.services.metrics import start_metrics_server
 
 configure_logging()
@@ -32,9 +33,14 @@ async def main() -> None:
     # Inject Redis instance into all handlers via keyword argument `redis`
     dp["redis"] = redis
 
-    # Middlewares — metrics first (so it wraps the handler) then DB.
+    # Middleware order (outer → inner):
+    #   1. Metrics  — record every update including the dropped ones
+    #   2. RateLimit — drop over-limit updates BEFORE opening a DB session
+    #   3. DB       — open SQLAlchemy session only for updates that survive
     dp.message.middleware(MetricsMiddleware())
     dp.callback_query.middleware(MetricsMiddleware())
+    dp.message.middleware(RateLimitMiddleware(redis))
+    dp.callback_query.middleware(RateLimitMiddleware(redis))
     dp.message.middleware(DatabaseMiddleware())
     dp.callback_query.middleware(DatabaseMiddleware())
 

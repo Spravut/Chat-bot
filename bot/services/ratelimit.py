@@ -46,6 +46,13 @@ REPORTS = RateLimit(
     limit=int(os.environ.get("RATE_LIMIT_REPORTS", "5")),
     window_seconds=int(os.environ.get("RATE_LIMIT_REPORTS_WINDOW", "300")),
 )
+# Global per-user limit applied by the middleware to EVERY Telegram update
+# (message + callback_query). Higher than per-action limits because it
+# catches spam at the protocol level, not per-feature.
+MESSAGES = RateLimit(
+    limit=int(os.environ.get("RATE_LIMIT_MESSAGES", "20")),
+    window_seconds=int(os.environ.get("RATE_LIMIT_MESSAGES_WINDOW", "10")),
+)
 
 
 async def check_and_consume(
