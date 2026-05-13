@@ -47,3 +47,8 @@ MINIO_SECURE: bool = os.environ.get("MINIO_SECURE", "false").lower() == "true"
 
 METRICS_PORT: int = int(os.environ.get("METRICS_PORT", "9100"))
 METRICS_ENABLED: bool = os.environ.get("METRICS_ENABLED", "true").lower() == "true"
+
+# ── Admin panel ───────────────────────────────────────────────────────────────
+
+ADMIN_USER: str = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "admin")

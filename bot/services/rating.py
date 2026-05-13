@@ -15,7 +15,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import (
-    Like, Match, Photo, Rating, RatingEvent, Referral, User, UserProfile,
+    Block, Like, Match, Photo, Rating, RatingEvent, Referral, User, UserProfile,
 )
 from bot.services.metrics import RANKING_QUERY_DURATION
 
@@ -156,14 +156,22 @@ async def get_ranked_candidates(
         )
     )
 
+    # Blocks: either direction excludes the pair from the feed.
+    blocked_outgoing = select(Block.blocked_id).where(Block.blocker_id == viewer_id)
+    blocked_incoming = select(Block.blocker_id).where(Block.blocked_id == viewer_id)
+
     stmt = (
         select(UserProfile.user_id)
+        .join(User, User.id == UserProfile.user_id)
         .outerjoin(Rating, Rating.user_id == UserProfile.user_id)
         .where(
             UserProfile.user_id != viewer_id,
             UserProfile.user_id.not_in(liked_sq),
             UserProfile.user_id.not_in(skipped_sq),
+            UserProfile.user_id.not_in(blocked_outgoing),
+            UserProfile.user_id.not_in(blocked_incoming),
             UserProfile.name.isnot(None),
+            User.is_banned.is_(False),
         )
         .order_by(Rating.level3_score.desc().nullslast())
         .limit(limit)

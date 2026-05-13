@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Users · Admin{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Users</h1>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search by name or city…">
+  </div>
+  <div class="col-auto form-check d-flex align-items-center ms-2">
+    <input class="form-check-input me-2" type="checkbox" name="show_banned" value="1"
+           id="showBanned" {% if show_banned %}checked{% endif %}>
+    <label class="form-check-label" for="showBanned">Show banned</label>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+</form>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Age</th>
+          <th>City</th>
+          <th>TG @</th>
+          <th>Rating</th>
+          <th>Joined</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr {% if r.is_banned %}class="table-danger"{% endif %}>
+          <td>{{ r.id }}</td>
+          <td>
+            {{ r.name or '—' }}
+            {% if r.is_banned %}<span class="badge bg-danger ms-1">banned</span>{% endif %}
+          </td>
+          <td>{{ r.age or '—' }}</td>
+          <td>{{ r.city or '—' }}</td>
+          <td>{% if r.username %}@{{ r.username }}{% else %}—{% endif %}</td>
+          <td>
+            {% if r.level3_score is not none %}
+              <span class="badge bg-info">{{ "%.2f"|format(r.level3_score|float) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td><small class="text-muted">{{ r.created_at.strftime("%Y-%m-%d") }}</small></td>
+          <td class="text-end">
+            {% if r.is_banned %}
+              <form method="post" action="/admin/users/{{ r.id }}/unban" class="d-inline">
+                <button class="btn btn-sm btn-outline-success">Unban</button>
+              </form>
+            {% else %}
+              <form method="post" action="/admin/users/{{ r.id }}/ban" class="d-inline"
+                    onsubmit="return confirm('Ban {{ r.name or r.id }}?')">
+                <button class="btn btn-sm btn-outline-danger">Ban</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="text-muted small mt-3">Showing up to 200 most recent. Use search to narrow down.</p>
+{% endblock %}

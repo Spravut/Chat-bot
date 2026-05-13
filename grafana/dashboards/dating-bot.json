@@ -1,0 +1,182 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total likes",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "dating_bot_likes_total", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Total skips",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "dating_bot_skips_total", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Total matches",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "dating_bot_matches_total", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Registrations",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "dating_bot_users_registered_total", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Referrals",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "dating_bot_referrals_total", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "yellow" } } }
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limited",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "sum(dating_bot_rate_limited_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "User actions per second (1m rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 10,
+      "options": { "legend": { "showLegend": true } },
+      "targets": [
+        { "expr": "rate(dating_bot_likes_total[1m])",          "refId": "A", "legendFormat": "likes" },
+        { "expr": "rate(dating_bot_skips_total[1m])",          "refId": "B", "legendFormat": "skips" },
+        { "expr": "rate(dating_bot_matches_total[1m])",        "refId": "C", "legendFormat": "matches" },
+        { "expr": "rate(dating_bot_users_registered_total[1m])","refId": "D", "legendFormat": "registrations" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Telegram updates by type",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 11,
+      "options": { "legend": { "showLegend": true } },
+      "targets": [
+        { "expr": "rate(dating_bot_tg_updates_total[1m])", "refId": "A", "legendFormat": "{{update_type}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ranking query latency (p50 / p95 / p99)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 20,
+      "options": { "legend": { "showLegend": true } },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(dating_bot_ranking_query_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(dating_bot_ranking_query_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(dating_bot_ranking_query_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Handler duration p95 (per handler)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 21,
+      "options": { "legend": { "showLegend": true } },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(dating_bot_handler_duration_seconds_bucket[5m])) by (le, handler))", "refId": "A", "legendFormat": "{{handler}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Feed cache: refills / candidates fetched",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "id": 30,
+      "targets": [
+        { "expr": "rate(dating_bot_feed_refills_total[1m])",            "refId": "A", "legendFormat": "refills/s" },
+        { "expr": "rate(dating_bot_feed_candidates_fetched_total[1m])", "refId": "B", "legendFormat": "candidates/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Photo uploads (success vs failed)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "id": 31,
+      "targets": [
+        { "expr": "rate(dating_bot_photo_uploads_total[5m])", "refId": "A", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RabbitMQ events: published vs failed",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "id": 32,
+      "targets": [
+        { "expr": "rate(dating_bot_events_published_total[1m])",      "refId": "A", "legendFormat": "ok {{task}}" },
+        { "expr": "rate(dating_bot_events_publish_failed_total[1m])", "refId": "B", "legendFormat": "fail {{task}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate-limited actions per second",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 40,
+      "targets": [
+        { "expr": "rate(dating_bot_rate_limited_total[1m])", "refId": "A", "legendFormat": "{{action}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Handler errors",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 41,
+      "targets": [
+        { "expr": "rate(dating_bot_handler_errors_total[5m])", "refId": "A", "legendFormat": "{{handler}}" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["dating-bot"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Dating Bot — Overview",
+  "uid": "dating-bot-overview",
+  "version": 1,
+  "weekStart": ""
+}

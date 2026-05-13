@@ -35,6 +35,18 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
     )
     user = result.scalar_one_or_none()
 
+    # Banned users are completely locked out — they get a notice and the
+    # interaction ends. Browse / matches filters also exclude them, so even
+    # if they somehow bypass /start, they wouldn't appear in anyone's feed.
+    if user is not None and user.is_banned:
+        await message.answer(
+            "🚫 <b>Аккаунт заблокирован.</b>\n\n"
+            "Твоя анкета удалена из выдачи модератором за нарушение правил. "
+            "По вопросам — свяжись с поддержкой.",
+            parse_mode="HTML",
+        )
+        return
+
     if user is None:
         if ref_telegram_id:
             await state.update_data(ref_telegram_id=ref_telegram_id)

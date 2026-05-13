@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Reports · Admin{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 m-0">Abuse reports</h1>
+  <div class="btn-group btn-group-sm" role="group">
+    <a href="/admin/reports?status_filter=pending"
+       class="btn btn-outline-warning {% if status_filter == 'pending' %}active{% endif %}">
+       Pending {% if pending_count %}({{ pending_count }}){% endif %}
+    </a>
+    <a href="/admin/reports?status_filter=confirmed"
+       class="btn btn-outline-danger {% if status_filter == 'confirmed' %}active{% endif %}">Confirmed</a>
+    <a href="/admin/reports?status_filter=dismissed"
+       class="btn btn-outline-secondary {% if status_filter == 'dismissed' %}active{% endif %}">Dismissed</a>
+    <a href="/admin/reports?status_filter=all"
+       class="btn btn-outline-primary {% if status_filter == 'all' %}active{% endif %}">All</a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Reporter</th>
+          <th>Reported</th>
+          <th>Reason</th>
+          <th>Comment</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td>#{{ r.reporter_id }} <small class="text-muted">tg={{ r.reporter_tg }}</small></td>
+          <td>
+            #{{ r.reported_id }} <small class="text-muted">tg={{ r.reported_tg }}</small>
+            {% if r.reported_banned %}<span class="badge bg-danger ms-1">banned</span>{% endif %}
+          </td>
+          <td><code>{{ r.reason }}</code></td>
+          <td><small>{{ r.comment or "—" }}</small></td>
+          <td>
+            {% if r.status == 'pending' %}<span class="badge bg-warning text-dark">pending</span>
+            {% elif r.status == 'confirmed' %}<span class="badge bg-danger">confirmed</span>
+            {% elif r.status == 'dismissed' %}<span class="badge bg-secondary">dismissed</span>
+            {% endif %}
+          </td>
+          <td><small class="text-muted">{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</small></td>
+          <td class="text-end">
+            {% if r.status == 'pending' %}
+              <form method="post" action="/admin/reports/{{ r.id }}/confirm" class="d-inline"
+                    onsubmit="return confirm('Confirm report and BAN user #{{ r.reported_id }}?')">
+                <button class="btn btn-sm btn-outline-danger">Confirm + Ban</button>
+              </form>
+              <form method="post" action="/admin/reports/{{ r.id }}/dismiss" class="d-inline">
+                <button class="btn btn-sm btn-outline-secondary">Dismiss</button>
+              </form>
+            {% else %}
+              <small class="text-muted">
+                {% if r.reviewed_at %}reviewed {{ r.reviewed_at.strftime("%Y-%m-%d") }}{% endif %}
+              </small>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No reports.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

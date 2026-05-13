@@ -29,15 +29,25 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.db.models import Like, Match, Photo, RatingEvent, User, UserProfile
+from bot.db.models import Block, Like, Match, Photo, RatingEvent, Report, User, UserProfile
 from bot.db.session import AsyncSessionFactory
-from bot.services.cache import needs_refill, pop_next, push_profiles
+from bot.services.cache import clear_feed, needs_refill, pop_next, push_profiles
 from bot.services.events import publish_interaction
 from bot.services.isolation import run_serializable
 from bot.services.metrics import LIKES_TOTAL, MATCHES_TOTAL, SKIPS_TOTAL
 from bot.services.rating import get_ranked_candidates, update_user_rating
+from bot.services.ratelimit import LIKES as LIKES_POLICY
+from bot.services.ratelimit import REPORTS as REPORTS_POLICY
+from bot.services.ratelimit import check_and_consume
 from bot.services.storage import display_ref
 from bot.states.browse import BrowseStates
+
+REPORT_REASONS = {
+    "spam":          "📢 Спам / реклама",
+    "fake":          "🎭 Фейк / не настоящее фото",
+    "inappropriate": "🔞 Неприемлемое содержание",
+    "other":         "📝 Другое",
+}
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -57,7 +67,27 @@ def _swipe_keyboard(target_user_id: int, photo_count: int = 1) -> InlineKeyboard
                 callback_data=f"show_photos:{target_user_id}",
             )
         ])
+    # Moderation row — blocking is one-tap, reporting opens an FSM flow.
+    rows.append([
+        InlineKeyboardButton(text="🚫 Заблокировать", callback_data=f"block:{target_user_id}"),
+        InlineKeyboardButton(text="🚨 Пожаловаться",  callback_data=f"report:{target_user_id}"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _report_reasons_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=label, callback_data=f"report_reason:{key}:{target_user_id}")]
+        for key, label in REPORT_REASONS.items()
+    ]
+    rows.append([InlineKeyboardButton(text="↩️ Отмена", callback_data="report_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _report_comment_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="↩️ Без комментария", callback_data="report_skip_comment"),
+    ]])
 
 
 def _ask_message_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
@@ -306,7 +336,10 @@ async def cb_like_no_msg(
             return
         viewer_db_id = viewer.id
 
-    await _do_like(viewer_db_id, target_user_id, session, callback.bot)
+    await _do_like(
+        viewer_db_id, target_user_id, session, callback.bot,
+        redis=redis, notify_chat_id=callback.message.chat.id,
+    )
     await _show_next(
         callback.bot,
         callback.message.chat.id,
@@ -341,7 +374,11 @@ async def receive_like_message(
     except Exception:
         pass
 
-    await _do_like(viewer_db_id, target_user_id, session, message.bot, user_message=message.text)
+    await _do_like(
+        viewer_db_id, target_user_id, session, message.bot,
+        user_message=message.text,
+        redis=redis, notify_chat_id=message.chat.id,
+    )
     await _show_next(message.bot, message.chat.id, viewer_db_id, session, redis)
 
 
@@ -368,7 +405,10 @@ async def cb_skip_message(
     viewer_db_id: int = data["viewer_db_id"]
     await state.clear()
 
-    await _do_like(viewer_db_id, target_user_id, session, callback.bot)
+    await _do_like(
+        viewer_db_id, target_user_id, session, callback.bot,
+        redis=redis, notify_chat_id=callback.message.chat.id,
+    )
     await _show_next(
         callback.bot,
         callback.message.chat.id,
@@ -382,7 +422,9 @@ async def cb_skip_message(
 # ── Target accepts the like notification ──────────────────────────────────────
 
 @router.callback_query(F.data.startswith("like_accept:"))
-async def cb_like_accept(callback: CallbackQuery, session: AsyncSession) -> None:
+async def cb_like_accept(
+    callback: CallbackQuery, session: AsyncSession, redis: Redis,
+) -> None:
     from_db_id = int(callback.data.split(":")[1])
 
     viewer = await _get_user(session, callback.from_user.id)
@@ -391,7 +433,10 @@ async def cb_like_accept(callback: CallbackQuery, session: AsyncSession) -> None
         return
 
     await callback.answer("❤️")
-    await _do_like(viewer.id, from_db_id, session, callback.bot)
+    await _do_like(
+        viewer.id, from_db_id, session, callback.bot,
+        redis=redis, notify_chat_id=callback.message.chat.id,
+    )
 
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -408,6 +453,167 @@ async def cb_like_skip(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
+
+
+# ── Block: one-tap, removes target from feed permanently ──────────────────────
+
+@router.callback_query(F.data.startswith("block:"))
+async def cb_block(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    redis: Redis,
+    state: FSMContext,
+) -> None:
+    target_user_id = int(callback.data.split(":")[1])
+    viewer = await _get_user(session, callback.from_user.id)
+    if not viewer or viewer.id == target_user_id:
+        await callback.answer()
+        return
+
+    # Idempotent: ignore duplicate block clicks.
+    existing = await session.scalar(
+        select(Block).where(
+            Block.blocker_id == viewer.id, Block.blocked_id == target_user_id,
+        )
+    )
+    if not existing:
+        session.add(Block(blocker_id=viewer.id, blocked_id=target_user_id))
+        await session.commit()
+
+    # Feed contained the now-blocked profile — invalidate so the next browse
+    # call rebuilds it fresh.
+    await clear_feed(redis, viewer.id)
+
+    await callback.answer("🚫 Пользователь заблокирован")
+    await _show_next(
+        callback.bot, callback.message.chat.id, viewer.id, session, redis,
+        old_message_id=callback.message.message_id,
+    )
+
+
+# ── Report: FSM — choose reason → optional comment → submit ───────────────────
+
+@router.callback_query(F.data.startswith("report:"))
+async def cb_report_start(
+    callback: CallbackQuery, session: AsyncSession, redis: Redis,
+    state: FSMContext,
+) -> None:
+    target_user_id = int(callback.data.split(":")[1])
+    viewer = await _get_user(session, callback.from_user.id)
+    if not viewer or viewer.id == target_user_id:
+        await callback.answer()
+        return
+
+    # Anti-spam: don't let a single user flood admins with reports.
+    allowed, retry_after = await check_and_consume(
+        redis, "report", viewer.id, REPORTS_POLICY,
+    )
+    if not allowed:
+        await callback.answer(
+            f"⚠️ Слишком много жалоб. Подожди {retry_after} сек.",
+            show_alert=True,
+        )
+        return
+
+    await callback.answer()
+    await state.set_state(BrowseStates.report_choosing_reason)
+    await state.update_data(
+        report_target=target_user_id,
+        report_card_msg_id=callback.message.message_id,
+    )
+    await callback.bot.send_message(
+        callback.message.chat.id,
+        "🚨 <b>За что хочешь пожаловаться?</b>",
+        parse_mode="HTML",
+        reply_markup=_report_reasons_keyboard(target_user_id),
+    )
+
+
+@router.callback_query(
+    BrowseStates.report_choosing_reason, F.data.startswith("report_reason:"),
+)
+async def cb_report_reason(callback: CallbackQuery, state: FSMContext) -> None:
+    _, reason_key, target_str = callback.data.split(":")
+    await callback.answer()
+    await state.update_data(report_reason=reason_key, report_target=int(target_str))
+    await state.set_state(BrowseStates.report_adding_comment)
+    await callback.message.edit_text(
+        f"🚨 Причина: <b>{REPORT_REASONS[reason_key]}</b>\n\n"
+        "Хочешь добавить комментарий? (или нажми кнопку ниже)",
+        parse_mode="HTML",
+        reply_markup=_report_comment_keyboard(),
+    )
+
+
+@router.message(BrowseStates.report_adding_comment, F.text)
+async def report_with_comment(
+    message: Message, session: AsyncSession, state: FSMContext,
+) -> None:
+    if len(message.text) > 500:
+        await message.answer("Слишком длинно. До 500 символов.")
+        return
+    await _finalize_report(message, session, state, comment=message.text)
+
+
+@router.callback_query(
+    BrowseStates.report_adding_comment, F.data == "report_skip_comment",
+)
+async def cb_report_skip_comment(
+    callback: CallbackQuery, session: AsyncSession, state: FSMContext,
+) -> None:
+    await callback.answer()
+    await _finalize_report(callback.message, session, state, comment=None,
+                           via_callback_from=callback.from_user.id)
+
+
+@router.callback_query(
+    BrowseStates.report_choosing_reason, F.data == "report_cancel",
+)
+async def cb_report_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer("Отменено")
+    await state.clear()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
+async def _finalize_report(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    comment: str | None,
+    via_callback_from: int | None = None,
+) -> None:
+    data = await state.get_data()
+    reason: str | None = data.get("report_reason")
+    target_id: int | None = data.get("report_target")
+    await state.clear()
+
+    if not reason or not target_id:
+        return
+
+    # When triggered by a callback, `message.from_user` is the bot, not the
+    # reporter — use the captured user id instead.
+    reporter_tg_id = via_callback_from or message.from_user.id
+    reporter = await _get_user(session, reporter_tg_id)
+    if not reporter:
+        return
+
+    session.add(Report(
+        reporter_id=reporter.id,
+        reported_id=target_id,
+        reason=reason,
+        comment=comment,
+    ))
+    await session.commit()
+
+    await message.bot.send_message(
+        message.chat.id,
+        "✅ <b>Жалоба отправлена.</b>\n\n"
+        "Спасибо! Модератор рассмотрит её и примет меры, если нужно.",
+        parse_mode="HTML",
+    )
 
 
 # ── Show all photos of a profile ──────────────────────────────────────────────
@@ -449,6 +655,18 @@ async def _persist_like_and_match(
     detects the concurrent-mutual-like write-skew and aborts one transaction
     with SQLSTATE 40001, which `run_serializable` retries.
     """
+    # Block guard: if either side blocked the other, silently no-op. Belt-
+    # and-suspenders for the case where a stale feed cache or stale "like
+    # received" notification button slips a like through after a block.
+    blocked = await session.scalar(
+        select(Block).where(
+            ((Block.blocker_id == from_id) & (Block.blocked_id == to_id))
+            | ((Block.blocker_id == to_id) & (Block.blocked_id == from_id))
+        )
+    )
+    if blocked:
+        return False, False
+
     duplicate = await session.scalar(
         select(Like).where(Like.from_user_id == from_id, Like.to_user_id == to_id)
     )
@@ -483,7 +701,22 @@ async def _do_like(
     session: AsyncSession,
     bot: Bot,
     user_message: str | None = None,
+    redis: Redis | None = None,
+    notify_chat_id: int | None = None,
 ) -> None:
+    # Anti-spam: don't let a single user spam-like the entire feed. The limit
+    # is per-user, per-window (see bot/services/ratelimit.py for the policy).
+    if redis is not None:
+        allowed, retry_after = await check_and_consume(
+            redis, "like", from_id, LIKES_POLICY,
+        )
+        if not allowed and notify_chat_id is not None:
+            await bot.send_message(
+                notify_chat_id,
+                f"⚠️ Слишком много лайков подряд. Подожди {retry_after} сек.",
+            )
+            return
+
     # Critical section under SERIALIZABLE (see bot/services/isolation.py for
     # the write-skew anomaly this prevents). Notifications and event publish
     # happen AFTER commit on the regular READ COMMITTED session — they don't

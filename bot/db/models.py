@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    BigInteger, Integer, String, Text, Numeric, TIMESTAMP,
+    BigInteger, Boolean, Integer, String, Text, Numeric, TIMESTAMP,
     ForeignKey, CheckConstraint, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -21,6 +21,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_banned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -176,6 +179,54 @@ class Referral(Base):
     )
 
     __table_args__ = (UniqueConstraint("referred_user_id"),)
+
+
+class Block(Base):
+    """Directed user-to-user block. Either side's feed excludes the other."""
+    __tablename__ = "user_blocks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    blocker_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    blocked_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("blocker_id <> blocked_id", name="blocks_no_self_block"),
+        UniqueConstraint("blocker_id", "blocked_id"),
+    )
+
+
+class Report(Base):
+    """Abuse report — surfaces in the admin panel for review."""
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    reporter_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reported_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # pending / confirmed / dismissed
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint("reporter_id <> reported_id", name="reports_no_self_report"),
+    )
 
 
 class Interest(Base):
